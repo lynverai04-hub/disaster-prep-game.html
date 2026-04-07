@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Disaster Prep Quest - Web Game</title>
+    <title>Disaster Prep Quest</title>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body {
@@ -26,7 +26,6 @@
             font-size: 1.5em; 
             font-weight: bold;
             margin-bottom: 20px;
-            backdrop-filter: blur(10px);
         }
         .scenario { 
             background: rgba(0,0,0,0.3); 
@@ -37,7 +36,7 @@
             line-height: 1.5;
             box-shadow: 0 10px 30px rgba(0,0,0,0.3);
         }
-        .choices { display: flex; flex-direction: column; gap: 15px; }
+        .choices { display: flex; flex-direction: column; gap: 15px; max-width: 600px; margin: 0 auto; }
         .choice-btn {
             background: linear-gradient(45deg, #ff6b6b, #ee5a52);
             color: white;
@@ -49,32 +48,39 @@
             transition: all 0.3s ease;
             font-weight: bold;
             box-shadow: 0 5px 15px rgba(0,0,0,0.2);
+            width: 100%;
         }
         .choice-btn:hover { transform: translateY(-3px); box-shadow: 0 8px 25px rgba(0,0,0,0.3); }
         .choice-btn:active { transform: translateY(0); }
+        .choice-btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+            transform: none;
+        }
         .feedback {
             margin-top: 20px;
-            padding: 20px;
+            padding: 25px;
             border-radius: 15px;
-            font-size: 1.1em;
+            font-size: 1.2em;
             font-weight: bold;
-            min-height: 60px;
+            min-height: 80px;
+            display: none;
         }
-        .safe { background: rgba(46, 204, 113, 0.8); }
-        .risky { background: rgba(241, 196, 15, 0.8); }
-        .dangerous { background: rgba(231, 76, 60, 0.8); }
-        .hidden { display: none; }
+        .safe { background: rgba(46, 204, 113, 0.9); border: 3px solid #27ae60; }
+        .risky { background: rgba(241, 196, 15, 0.9); border: 3px solid #f39c12; }
+        .dangerous { background: rgba(231, 76, 60, 0.9); border: 3px solid #c0392b; }
+        .hidden { display: none !important; }
         .restart-btn { 
             background: linear-gradient(45deg, #667eea, #764ba2); 
-            margin-top: 20px; 
+            margin-top: 30px; 
             padding: 15px 40px; 
             font-size: 1.2em;
         }
         .progress { 
             width: 100%; 
-            height: 10px; 
+            height: 12px; 
             background: rgba(255,255,255,0.2); 
-            border-radius: 5px; 
+            border-radius: 6px; 
             margin: 20px 0; 
             overflow: hidden;
         }
@@ -84,143 +90,216 @@
             width: 0%; 
             transition: width 0.5s ease;
         }
-        @media (max-width: 600px) {
-            h1 { font-size: 2em; }
-            .scenario { font-size: 1.1em; padding: 20px; }
-            .choice-btn { padding: 15px 20px; font-size: 1.1em; }
-        }
+        .step-info { font-size: 1.1em; color: #ffd700; margin-bottom: 10px; }
     </style>
 </head>
 <body>
     <div class="container">
         <h1>🚨 Disaster Prep Quest 🚨</h1>
-        <p class="subtitle">Minimize damage & stay safe! Based on FEMA/Red Cross guidelines</p>
+        <p class="subtitle">Real FEMA/Red Cross safety training game</p>
         
         <div class="score">Score: <span id="score">0</span>/100</div>
         <div class="progress">
-            <div class="progress-bar" id="progress"></div>
+            <div class="progress-bar" id="progressBar"></div>
         </div>
+        <div class="step-info" id="stepInfo">Choose your disaster!</div>
         
         <!-- Start Screen -->
         <div id="startScreen">
             <div class="scenario">
-                Choose your disaster to begin the survival challenge!
+                <strong>Pick your disaster survival challenge!</strong><br><br>
+                Test your knowledge of REAL safety protocols.
             </div>
             <div class="choices">
-                <button class="choice-btn" onclick="startGame(0)">🌍 Earthquake</button>
-                <button class="choice-btn" onclick="startGame(1)">🌊 Flood</button>
-                <button class="choice-btn" onclick="startGame(2)">🔥 House Fire</button>
-                <button class="choice-btn" onclick="startGame(3)">🌪️ Hurricane</button>
+                <button class="choice-btn" onclick="loadDisaster(0)">🌍 Earthquake</button>
+                <button class="choice-btn" onclick="loadDisaster(1)">🌊 Flood</button>
+                <button class="choice-btn" onclick="loadDisaster(2)">🔥 House Fire</button>
+                <button class="choice-btn" onclick="loadDisaster(3)">🌪️ Hurricane</button>
             </div>
         </div>
 
         <!-- Game Screen -->
         <div id="gameScreen" class="hidden">
-            <div class="scenario" id="scenario"></div>
-            <div class="choices" id="choices"></div>
-            <div class="feedback hidden" id="feedback"></div>
-            <button class="choice-btn restart-btn" onclick="restartGame()" id="restartBtn" style="display:none;">🔄 Restart Disaster</button>
+            <div class="scenario" id="scenarioText"></div>
+            <div class="choices" id="choiceContainer"></div>
+            <div class="feedback" id="feedback"></div>
+            <button class="choice-btn restart-btn" onclick="restartGame()">🔄 New Disaster</button>
         </div>
     </div>
 
     <script>
-        let currentScore = 0;
-        let currentDisaster = -1;
-        let currentStep = 0;
-        let gameData = {
-            0: { // Earthquake
-                name: "Earthquake",
-                steps: [
-                    {
-                        text: "You're at home during a major earthquake. Ground shakes violently! FIRST action?",
-                        choices: [
-                            { text: "Run outside to the street.", correct: false, type: "dangerous", explanation: "❌ Falling debris outside is deadlier. Stay inside!" },
-                            { text: "Drop, Cover under sturdy furniture, Hold On until shaking stops.", correct: true, type: "safe", explanation: "✅ Perfect! 'Drop, Cover, Hold On' (FEMA/USGS) protects from falling objects." },
-                            { text: "Stand in a doorway.", correct: false, type: "risky", explanation: "⚠️ Old myth. Doorways aren't safer—cover under a table instead." },
-                            { text: "Hide in the bathtub.", correct: false, type: "risky", explanation: "⚠️ OK for aftershocks, but first: Drop, Cover, Hold On where you are." }
-                        ]
-                    },
-                    {
-                        text: "Shaking stops. Power's out, aftershocks coming. Next?",
-                        choices: [
-                            { text: "Check for injuries & gas leaks before anything.", correct: true, type: "safe", explanation: "✅ Yes! 'Stop, Drop, Roll' if on fire. Check gas (smell rotten eggs), water lines." },
-                            { text: "Open all windows immediately.", correct: false, type: "dangerous", explanation: "❌ Could spread gas if leaking. Check first!" },
-                            { text: "Go back to bed.", correct: false, type: "dangerous", explanation: "❌ Aftershocks can be as strong. Evacuate if unsafe." }
-                        ]
+        // FULL GAME DATA - All disasters ready!
+        const disasters = {
+            0: { name: "🌍 EARTHQUAKE", steps: [
+                {
+                    question: "You're at home. Ground SHAKES violently! FIRST action?",
+                    choices: [
+                        "1️⃣ Run outside to street",
+                        "2️⃣ Drop, Cover under table, Hold On",
+                        "3️⃣ Stand in doorway", 
+                        "4️⃣ Hide in bathtub"
+                    ],
+                    correct: 1,
+                    feedback: {
+                        0: { type: "dangerous", text: "❌ DEADLY! Falling debris outside kills most. Stay inside!" },
+                        1: { type: "safe", text: "✅ PERFECT! FEMA: 'Drop, Cover, Hold On' saves lives!" },
+                        2: { type: "risky", text: "⚠️ Myth! Doorways aren't safe anymore." },
+                        3: { type: "risky", text: "⚠️ Bathtub good for aftershocks, not first shake." }
                     }
-                ]
-            },
-            1: { // Flood
-                name: "Flood",
-                steps: [ /* Add more data here */ ]
-            },
-            2: { // Fire
-                name: "House Fire",
-                steps: [ /* Add more data here */ ]
-            },
-            3: { // Hurricane
-                name: "Hurricane",
-                steps: [ /* Add more data here */ ]
-            }
+                },
+                {
+                    question: "Shaking stops. Aftershocks coming! Next?",
+                    choices: [
+                        "1️⃣ Check gas leaks/injuries first",
+                        "2️⃣ Open all windows immediately", 
+                        "3️⃣ Go back to sleep"
+                    ],
+                    correct: 0,
+                    feedback: {
+                        0: { type: "safe", text: "✅ YES! Smell rotten eggs? Gas leak. Check people first!" },
+                        1: { type: "dangerous", text: "❌ NO! Could spread gas if leaking!" },
+                        2: { type: "dangerous", text: "❌ Aftershocks destroy weakened buildings!" }
+                    }
+                }
+            ]},
+            1: { name: "🌊 FLOOD", steps: [
+                {
+                    question: "Flash flood warning! 6 inches of moving water...?",
+                    choices: [
+                        "1️⃣ Drive through to get home",
+                        "2️⃣ Turn around, go higher ground",
+                        "3️⃣ Wait in car"
+                    ],
+                    correct: 1,
+                    feedback: {
+                        0: { type: "dangerous", text: "❌ 6in water = 2,000lb force! Cars swept away!" },
+                        1: { type: "safe", text: "✅ TURN AROUND! Never drive through floodwater (Red Cross)." },
+                        2: { type: "dangerous", text: "❌ Water rises fast. Get to HIGH GROUND!" }
+                    }
+                }
+            ]},
+            2: { name: "🔥 HOUSE FIRE", steps: [
+                {
+                    question: "Smoke alarm blares! You smell smoke. FIRST?",
+                    choices: [
+                        "1️⃣ Grab valuables",
+                        "2️⃣ Get low, test door with back of hand",
+                        "3️⃣ Run to windows"
+                    ],
+                    correct: 1,
+                    feedback: {
+                        0: { type: "dangerous", text: "❌ Seconds matter! Get out NOW!" },
+                        1: { type: "safe", text: "✅ YES! Stay low (smoke rises), feel door (hot=use window)." },
+                        2: { type: "risky", text: "⚠️ Windows are 2nd choice if door hot." }
+                    }
+                }
+            ]},
+            3: { name: "🌪️ HURRICANE", steps: [
+                {
+                    question: "Hurricane approaching! Best prep?",
+                    choices: [
+                        "1️⃣ Board up windows",
+                        "2️⃣ Fill bathtubs with water",
+                        "3️⃣ Evacuate beaches"
+                    ],
+                    correct: 2,
+                    feedback: {
+                        0: { type: "risky", text: "⚠️ Good, but water is critical too." },
+                        1: { type: "risky", text: "⚠️ Smart for flushing toilets post-power loss." },
+                        2: { type: "safe", text: "✅ PRIORITY #1! Storm surge kills most (FEMA)." }
+                    }
+                }
+            ]}
         };
 
-        function startGame(disasterId) {
-            currentDisaster = disasterId;
+        let currentDisasterId = -1;
+        let currentStep = 0;
+        let score = 0;
+
+        function loadDisaster(disasterId) {
+            currentDisasterId = disasterId;
             currentStep = 0;
-            currentScore = 0;
-            updateScore();
+            score = 0;
+            updateUI();
             document.getElementById('startScreen').classList.add('hidden');
             document.getElementById('gameScreen').classList.remove('hidden');
-            showStep();
+            showCurrentStep();
         }
 
-        function showStep() {
-            const step = gameData[currentDisaster].steps[currentStep];
-            document.getElementById('scenario').innerHTML = `🌍 <strong>${gameData[currentDisaster].name}</strong><br>${step.text}`;
+        function showCurrentStep() {
+            const disaster = disasters[currentDisasterId];
+            const step = disaster.steps[currentStep];
             
-            const choicesDiv = document.getElementById('choices');
-            choicesDiv.innerHTML = '';
-            step.choices.forEach((choice, index) => {
-                const btn = document.createElement('button');
-                btn.className = 'choice-btn';
-                btn.innerHTML = `${index + 1}. ${choice.text}`;
-                btn.onclick = () => selectChoice(index, choice);
-                choicesDiv.appendChild(btn);
+            document.getElementById('scenarioText').innerHTML = 
+                `<strong>${disaster.name}</strong><br><br>${step.question}`;
+            
+            const container = document.getElementById('choiceContainer');
+            container.innerHTML = '';
+            
+            step.choices.forEach((choiceText, index) => {
+                const button = document.createElement('button');
+                button.className = 'choice-btn';
+                button.textContent = choiceText;
+                button.onclick = () => handleChoice(index, step);
+                container.appendChild(button);
             });
             
-            document.getElementById('feedback').classList.add('hidden');
-            document.getElementById('restartBtn').style.display = 'none';
+            document.getElementById('feedback').style.display = 'none';
+            document.querySelectorAll('.choice-btn').forEach(btn => btn.disabled = false);
+            
+            document.getElementById('stepInfo').textContent = 
+                `Step ${currentStep + 1} of ${disaster.steps.length}`;
         }
 
-        function selectChoice(index, choice) {
-            const feedback = document.getElementById('feedback');
-            feedback.innerHTML = choice.explanation;
-            feedback.className = `feedback ${choice.type}`;
-            feedback.classList.remove('hidden');
+        function handleChoice(choiceIndex, step) {
+            // Disable all buttons
+            document.querySelectorAll('.choice-btn').forEach(btn => btn.disabled = true);
             
-            if (choice.correct) currentScore += 10;
-            else if (choice.type === 'risky') currentScore += 5;
+            const feedback = step.feedback[choiceIndex];
+            const feedbackEl = document.getElementById('feedback');
             
-            updateScore();
+            feedbackEl.textContent = feedback.text;
+            feedbackEl.className = `feedback ${feedback.type}`;
+            feedbackEl.style.display = 'block';
             
-            currentStep++;
-            if (currentStep >= gameData[currentDisaster].steps.length) {
-                feedback.innerHTML += `<br><br>🎉 Disaster Complete! Final Score: ${currentScore}/100`;
-                document.getElementById('restartBtn').style.display = 'inline-block';
-            } else {
-                setTimeout(showStep, 3000);
+            // Update score
+            if (choiceIndex === step.correct) {
+                score += 10;
+            } else if (feedback.type === 'risky') {
+                score += 5;
             }
+            
+            updateUI();
+            
+            // Next step or end
+            setTimeout(() => {
+                currentStep++;
+                const disaster = disasters[currentDisasterId];
+                if (currentStep >= disaster.steps.length) {
+                    showGameComplete();
+                } else {
+                    showCurrentStep();
+                }
+            }, 3000);
         }
 
-        function updateScore() {
-            document.getElementById('score').textContent = currentScore;
-            const progress = (currentScore / 100) * 100;
-            document.getElementById('progress').querySelector('.progress-bar').style.width = progress + '%';
+        function showGameComplete() {
+            document.getElementById('scenarioText').innerHTML = 
+                `🎉 <strong>${disasters[currentDisasterId].name} COMPLETE!</strong><br><br>Final Score: ${score}/100`;
+            document.getElementById('choiceContainer').innerHTML = '';
+            document.getElementById('stepInfo').textContent = 'Mission Accomplished! 👏';
+        }
+
+        function updateUI() {
+            document.getElementById('score').textContent = score;
+            const progress = Math.min((score / 100) * 100, 100);
+            document.getElementById('progressBar').style.width = progress + '%';
         }
 
         function restartGame() {
             document.getElementById('gameScreen').classList.add('hidden');
             document.getElementById('startScreen').classList.remove('hidden');
+            document.getElementById('stepInfo').textContent = 'Choose your disaster!';
         }
     </script>
 </body>
